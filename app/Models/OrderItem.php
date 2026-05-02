@@ -1,23 +1,43 @@
 <?php
 
 namespace App\Models;
-
+ 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
-
-class OrderItem extends Model
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+ 
+class User extends Authenticatable
 {
-    use HasFactory;
-
-    protected $fillable = ['order_id', 'product_id', 'quantity', 'price'];
-
-    public function order()
+    use HasFactory, Notifiable;
+ 
+    protected $fillable = [
+        'name', 'email', 'password', 'role', 'phone', 'address',
+    ];
+ 
+    protected $hidden = ['password', 'remember_token'];
+ 
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'password' => 'hashed',
+    ];
+ 
+    public function isAdmin(): bool
     {
-        return $this->belongsTo(Order::class);
+        return $this->role === 'admin';
     }
-
-    public function product()
+ 
+    public function carts()
     {
-        return $this->belongsTo(Product::class);
+        return $this->hasMany(Cart::class);
+    }
+ 
+    public function orders()
+    {
+        return $this->hasMany(Order::class);
+    }
+ 
+    public function getCartCountAttribute()
+    {
+        return $this->carts()->sum('quantity');
     }
 }
