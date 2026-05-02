@@ -1,56 +1,88 @@
 <?php
 
 namespace App\Http\Controllers;
-
-use App\Models\Product;
+ 
 use App\Models\Category;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use App\Models\Product;
 use Inertia\Inertia;
-
+use Illuminate\Http\Request;
+ 
 class ProductController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $products = Product::with('category')->get();
-
-        return Inertia::render('Product/Index', [
-            'products' => $products
-        ]);
-    }
-
-    public function create()
-    {
-        $categories = Category::all();
-        return Inertia::render('Product/Create', [
-            'categories' => $categories
-        ]);
-    }
-
-    public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'category_id' => 'required|exists:categories,id',
-            'name' => 'required|max:255',
-            'description' => 'nullable',
-            'price' => 'required|numeric|min:0',
-            'image' => 'nullable|image|max:2048', // Max 2MB
-        ]);
-
-        if ($request->hasFile('image')) {
-            $validated['image'] = $request->file('image')->store('products', 'public');
+        $query = Product::with('category')->where('is_active', true);
+ 
+        if ($request->search) {
+            $query->where('name', 'like', "%{$request->search}%");
         }
-
-        Product::create($validated);
-
-        return redirect()->route('products.index')->with('success', 'Produk berhasil ditambahkan!');
+ 
+        if ($request->category) {
+            $query->whereHas('category', fn($q) => $q->where('slug', $request->category));
+        }
+ 
+        if ($request->sort === 'price_asc') {
+            $query->orderBy('price', 'asc');
+        } elseif ($request->sort === 'price_desc') {
+            $query->orderBy('price', 'desc');
+        } else {
+            $query->latest();
+        }
+ 
+        $products = $query->paginate(12)->through(fn($p) => [
+            'id' => $p->id,
+            'name' => $p->name,
+            'slug' => $p->slug,
+            'price' => $p->price,
+            'formatted_price' => $p->formatted_price,
+            'image' => $p->image,
+            'stock' => $p->stock,
+            'category' => $p->category?->name,
+        ]);
+ 
+        $categories = Category::all();
+ 
+        return Inertia::render('Products/Index', [
+            'products' => $products,
+            'categories' => $categories,
+            'filters' => $request->only(['search', 'category', 'sort']),
+        ]);
     }
-
-    public function show($id)
+ 
+    public function show(Product $product)
     {
-        $product = Product::with('category')->findOrFail($id);
-        return Inertia::render('Product/Show', [
-            'product' => $product
+        $product->load('category');
+ 
+        $related = Product::with('category')
+            ->where('category_id', $product->category_id)
+            ->where('id', '!=', $product->id)
+            
+            ->take(4)
+            ->get()
+            ->map(fn($p) => [
+                'id' => $p->id,
+                'name' => $p->name,
+                'slug' => $p->slug,
+                'price' => $p->price,
+                'formatted_price' => $p->formatted_price,
+                'image' => $p->image,
+                'stock' => $p->stock,
+            ]);
+ 
+        return Inertia::render('Products/Show', [
+            'product' => [
+                'id' => $product->id,
+                'name' => $product->name,
+                'slug' => $product->slug,
+                'description' => $product->description,
+                'price' => $product->price,
+                'formatted_price' => $product->formatted_price,
+                'image' => $product->image,
+                'stock' => $product->stock,
+                'category' => $product->category?->name,
+            ],
+            'related' => $related,
         ]);
     }
 }
+ 
